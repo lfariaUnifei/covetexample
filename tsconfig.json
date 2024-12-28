@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "rootDirs": [
+      "src",
+      "test"
+    ],
+    "baseUrl": "src",
+    "paths": {
+      "@/test/*": [
+        "../test/*"
+      ],
+      "@/*": [
+        "*"
+      ]
+    },
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "ES6",
+    "outDir": "./build",
+    "lib": [
+      "ES2022"
+    ],
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "strictNullChecks": true,
+    "emitDecoratorMetadata": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+  },
+  "exclude": [
+    "dist",
+    "build"
+  ],
+  "include": [
+    "src",
+    "scripts",
+    "test",
+    "migrations"
+  ]
+}
