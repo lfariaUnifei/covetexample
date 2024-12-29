@@ -1,40 +1,31 @@
 {
   "compilerOptions": {
-    "rootDirs": [
-      "src",
-      "test"
-    ],
-    "baseUrl": "src",
-    "paths": {
-      "@/test/*": [
-        "../test/*"
-      ],
-      "@/*": [
-        "*"
-      ]
-    },
-    "moduleResolution": "node",
-    "module": "commonjs",
-    "target": "ES6",
-    "outDir": "./build",
+    "moduleResolution": "nodenext",
+    "module": "NodeNext",
+    "target": "ESNext",
+    "outDir": "build",
     "lib": [
-      "ES2022"
+      "ES2022",
+      "ESNext"
     ],
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "strictNullChecks": true,
     "emitDecoratorMetadata": true,
     "allowSyntheticDefaultImports": true,
-    "declaration": true,
+    "skipLibCheck": true
   },
   "exclude": [
+    "node_modules",
     "dist",
     "build"
   ],
   "include": [
-    "src",
-    "scripts",
-    "test",
-    "migrations"
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "test/**/*.ts",
+    "migrations/**/*.ts"
   ]
 }

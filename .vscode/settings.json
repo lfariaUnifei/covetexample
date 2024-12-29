@@ -1,0 +1,85 @@
+{
+  "workbench.colorCustomizations": {
+    "activityBar.activeBackground": "#2f477c",
+    "activityBar.activeBorder": "#2c4974",
+    "activityBar.background": "#2f547c",
+    "activityBar.foreground": "#e7e7e7",
+    "activityBar.inactiveForeground": "#e7e7e799",
+    "activityBarBadge.background": "#2c4e74",
+    "activityBarBadge.foreground": "#e7e7e7",
+    "sash.hoverBorder": "#2f417c",
+    "statusBar.background": "#213157",
+    "statusBar.foreground": "#e7e7e7",
+    "statusBarItem.hoverBackground": "#2f477c",
+    "statusBarItem.remoteBackground": "#212c57",
+    "statusBarItem.remoteForeground": "#e7e7e7",
+    "titleBar.activeBackground": "#213457",
+    "titleBar.activeForeground": "#e7e7e7",
+    "titleBar.inactiveBackground": "#21265799",
+    "titleBar.inactiveForeground": "#e7e7e799"
+  },
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "[typescript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    },
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+  },
+  "[javascript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit"
+    },
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+  },
+  "typescript.updateImportsOnFileMove.enabled": "always",
+  "jest.autoRun": {},
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/.history": true,
+    "**/*.json": true
+  },
+  "files.watcherExclude": {
+    "**/.history": true
+  },
+  "explorer.sortOrder": "type",
+  "material-icon-theme.files.associations": {
+    "standalone.ts": "serverless",
+    "_serverless.ts": "serverless",
+    "*.dao.ts": "database",
+    "*.schema.ts": "settings",
+    "*.policy.ts": "redux-reducer",
+    "*.rule.ts": "redux-selector",
+    "*.helper.ts": "coala",
+    "helpers.ts": "coala"
+  },
+  "material-icon-theme.folders.associations": {
+    "controllers": "routes",
+    "policies": "taskfile",
+    "domain": "class"
+  },
+  "terminal.integrated.profiles.linux": {
+    "BashWithNvm": {
+      "id": "BashWithNvm",
+      "path": "bash",
+      "source": "bash",
+      "args": [
+        "-c",
+        "[ -f .nvmrc ] && { [ -f ./.scripts/loadNvmAndNode.sh ] && ./.scripts/loadNvmAndNode.sh || { [ -f /usr/local/bin/loadNvmAndNode.sh ] && loadNvmAndNode.sh || true; }; } || true; exec $SHELL"
+      ],
+      "extensionIdentifier": "linux",
+      "icon": "terminal-bash",
+      "title": "Bash with NVM"
+    },
+    "BashWithoutNvm": {
+      "id": "BashWithoutNvm",
+      "path": "bash",
+      "source": "bash",
+      "icon": "terminal-bash",
+      "title": "Bash without NVM"
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "BashWithNvm"
+}

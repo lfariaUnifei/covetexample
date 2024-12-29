@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "typescript",
+      "tsconfig": "tsconfig.json",
+      "option": "watch",
+      "problemMatcher": [
+        "$tsc-watch"
+      ],
+      "group": "build",
+      "label": "tsc: watch - tsconfig.json",
+    },
+    {
+      "label": "tsc watch",
+      "type": "shell",
+      "command": "tsc -w",
+      "problemMatcher": [
+        "$tsc-watch"
+      ],
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": false,
+        "group": "build",
+        "focus": false
+      },
+      "options": {
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "bash",
+          "args": [
+            "-c"
+          ]
+        },
+        "terminal": {
+          "profile": "BashWithoutNvm"
+        },
+        "envFile": "${workspaceFolder}/.env",
+        "shellArgs": [
+          "-c",
+          ". ~/.nvm/nvm.sh && nvm use && tsc -w"
+        ]
+      }
+    }
+  ]
+}
