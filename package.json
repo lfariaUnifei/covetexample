@@ -17,10 +17,6 @@
   "keywords": [],
   "license": "ISC",
   "dependencies": {
-    "@eduq/date-wrapper": "^1.5.0",
-    "@eduq/date-wrapper-dayjs": "^1.5.0",
-    "@eduq/mongoose": "^5.4.1",
-    "@eduq/ts-on-steroids": "^3.1.12",
     "cors": "^2.8.5",
     "dotenv": "^14.2.0",
     "express": "~4.17.2",
