@@ -72,3 +72,14 @@ db.json
 .history/
 ca.crt
 **.csv
+
+# Ignore all JSON files except specified ones
+*.json
+!.vscode/*.json
+!firebase.json
+!firestore.indexes.json
+!package-lock.json
+!package.json
+!.prettierrc.json
+!tsconfig-build.json
+!.eslintrc.json
