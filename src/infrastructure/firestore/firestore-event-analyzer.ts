@@ -1,14 +1,20 @@
 import { DocumentSnapshot } from 'firebase-admin/firestore';
 import { Change, FirestoreEvent } from 'firebase-functions/firestore';
-import { Keyof } from '../../shared/types';
 
 type ChangeType = 'addition' | 'update' | 'deletion';
 
+type Keyof<T> = T extends Array<any> ? string : keyof T;
+
 type ChangedField<T> = {
   fieldName: Keyof<T>;
-  fieldNewValue?: T[Keyof<T>];
-  fieldOldValue?: T[Keyof<T>];
+  fieldNewValue?: T;
+  fieldOldValue?: T;
   changeType: ChangeType;
+};
+
+type ObjectChanges<T> = {
+  changeType: ChangeType;
+  changedFields?: FirestoreChangedFields<T>;
 };
 
 type FirestoreChanges<T> = {
@@ -22,10 +28,10 @@ type FirestoreChanges<T> = {
 type FirestoreChangedFields<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
     ? U extends Record<string, any>
-      ? Array<Record<Keyof<U>, ChangedField<U> | undefined>>
-      : ChangedField<T[K]>
+      ? Array<ObjectChanges<U>>
+      : ChangedField<T[K]> // If array of primitives, T[K] is the entire array
     : T[K] extends Record<string, any>
-    ? FirestoreChangedFields<T[K]>
+    ? ObjectChanges<T[K]>
     : ChangedField<T[K]>;
 };
 
@@ -61,13 +67,32 @@ export class FirestoreEventAnalyzer {
       const afterValue = after?.[fieldName];
 
       if (Array.isArray(beforeValue) || Array.isArray(afterValue)) {
-        // Handle array of objects comparison
-        const arrayChanges = this.getArrayChanges(
-          beforeValue as any[],
-          afterValue as any[],
-        );
-        if (arrayChanges.length > 0) {
-          changedFields[fieldName as Keyof<T>] = arrayChanges as any;
+        if (
+          beforeValue?.every((item: unknown) => typeof item !== 'object') &&
+          afterValue?.every((item: unknown) => typeof item !== 'object')
+        ) {
+          // Handle array of primitives comparison
+          if (beforeValue?.toString() !== afterValue?.toString()) {
+            changedFields[fieldName as Keyof<T>] = {
+              fieldName: fieldName as Keyof<T>,
+              fieldNewValue: afterValue,
+              fieldOldValue: beforeValue,
+              changeType: !beforeValue
+                ? 'addition'
+                : !afterValue
+                ? 'deletion'
+                : 'update',
+            } as any;
+          }
+        } else {
+          // Handle array of objects comparison
+          const arrayChanges = this.getArrayChanges(
+            beforeValue as any[],
+            afterValue as any[],
+          );
+          if (arrayChanges.length > 0) {
+            changedFields[fieldName as Keyof<T>] = arrayChanges as any;
+          }
         }
       } else if (
         typeof beforeValue === 'object' &&
@@ -76,15 +101,12 @@ export class FirestoreEventAnalyzer {
         afterValue
       ) {
         // Handle nested object comparison
-        const nestedChanges = this.collectChangedFields(
-          beforeValue,
-          afterValue,
-        );
+        const nestedChanges = this.getObjectChanges(beforeValue, afterValue);
         changedFields[fieldName as Keyof<T>] = nestedChanges as any;
       } else if (beforeValue !== afterValue) {
         // Handle primitive comparison
         changedFields[fieldName as Keyof<T>] = {
-          fieldName,
+          fieldName: fieldName as Keyof<T>,
           fieldNewValue: afterValue,
           fieldOldValue: beforeValue,
           changeType: !beforeValue
@@ -102,8 +124,8 @@ export class FirestoreEventAnalyzer {
   private static getArrayChanges<T extends Record<string, any>>(
     before: T[] = [],
     after: T[] = [],
-  ): Array<Record<Keyof<T>, ChangedField<T> | undefined>> {
-    const changes: Array<Record<Keyof<T>, ChangedField<T> | undefined>> = [];
+  ): Array<ObjectChanges<T>> {
+    const changes: Array<ObjectChanges<T>> = [];
 
     const maxLength = Math.max(before.length, after.length);
 
@@ -114,36 +136,44 @@ export class FirestoreEventAnalyzer {
       if (beforeItem && afterItem) {
         // Compare fields in the array item
         const itemChanges = this.collectChangedFields(beforeItem, afterItem);
-        changes.push(
-          itemChanges as Record<Keyof<T>, ChangedField<T> | undefined>,
-        );
+        changes.push({
+          changeType: 'update',
+          changedFields: itemChanges,
+        });
       } else if (!beforeItem && afterItem) {
         // Entire item added
-        const addedItemChanges = {} as Record<Keyof<T>, ChangedField<T>>;
-        Object.keys(afterItem).forEach((key) => {
-          addedItemChanges[key as Keyof<T>] = {
-            fieldName: key as Keyof<T>,
-            fieldNewValue: afterItem[key],
-            fieldOldValue: undefined,
-            changeType: 'addition',
-          };
+        changes.push({
+          changeType: 'addition',
+          changedFields: this.collectChangedFields(undefined, afterItem),
         });
-        changes.push(addedItemChanges);
       } else if (beforeItem && !afterItem) {
         // Entire item removed
-        const removedItemChanges = {} as Record<Keyof<T>, ChangedField<T>>;
-        Object.keys(beforeItem).forEach((key) => {
-          removedItemChanges[key as Keyof<T>] = {
-            fieldName: key as Keyof<T>,
-            fieldNewValue: undefined,
-            fieldOldValue: beforeItem[key],
-            changeType: 'deletion',
-          };
+        changes.push({
+          changeType: 'deletion',
+          changedFields: this.collectChangedFields(beforeItem, undefined),
         });
-        changes.push(removedItemChanges);
       }
     }
 
     return changes;
+  }
+
+  private static getObjectChanges<T extends Record<string, any>>(
+    before?: T,
+    after?: T,
+  ): ObjectChanges<T> {
+    const changedFields = this.collectChangedFields(before, after);
+    let changeType: ChangeType = 'update';
+
+    if (!before) {
+      changeType = 'addition';
+    } else if (!after) {
+      changeType = 'deletion';
+    }
+
+    return {
+      changeType,
+      changedFields,
+    };
   }
 }
