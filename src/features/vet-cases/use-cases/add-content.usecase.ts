@@ -1,4 +1,4 @@
-import { ContentTemplateName } from '../domain/entities/content-requests/content-request';
+import { ContentTemplateName } from '../domain/entities/content-request';
 import { VetCaseRepository } from '../domain/vet-case.repository';
 
 export class AddContentUsecase {

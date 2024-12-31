@@ -1,10 +1,7 @@
 import { v4 } from 'uuid';
 import { CaseInputSourceRef } from './case-input';
 import { Content } from './content';
-import {
-  ContentRequest,
-  ContentTemplateName,
-} from './content-requests/content-request';
+import { ContentRequest, ContentTemplateName } from './content-request';
 
 export type VetCaseData = {
   ownerId: string;
@@ -101,12 +98,6 @@ export class VetCase {
     return Boolean(this.findContent(contentId));
   }
 
-  private findContent(contentId: string): Content | undefined {
-    return this.vetCase.contents.find(
-      (content) => content.contentId === contentId,
-    );
-  }
-
   findInput(inputId: string): CaseInputSourceRef | undefined {
     const result = this.findInputIndex(inputId);
     return result ? { ...this.vetCase.inputs[result] } : undefined;
@@ -128,6 +119,12 @@ export class VetCase {
       return undefined;
     }
     return index;
+  }
+
+  private findContent(contentId: string): Content | undefined {
+    return this.vetCase.contents.find(
+      (content) => content.contentId === contentId,
+    );
   }
 }
 

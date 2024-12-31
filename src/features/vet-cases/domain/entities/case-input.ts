@@ -43,3 +43,13 @@ export type TranscribedInputSource = _CaseInputSource<'transcribed'> & {
 export type TranscribingInputSource = _CaseInputSource<'transcribing'>;
 
 export type CaseInputSource = TranscribedInputSource | TranscribingInputSource;
+
+export function caseInputSourceToRef(
+  source: CaseInputSource,
+): CaseInputSourceRef {
+  return {
+    id: source.id,
+    name: source.data.name,
+    status: source.status,
+  };
+}
