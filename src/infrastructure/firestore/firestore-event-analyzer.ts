@@ -3,18 +3,20 @@ import { Change, FirestoreEvent } from 'firebase-functions/firestore';
 
 type ChangeType = 'addition' | 'update' | 'deletion' | 'unchanged';
 
-type Keyof<T> = T extends Array<any> ? string : keyof T;
-
 type ChangedField<T> = {
-  fieldName: Keyof<T>;
   fieldNewValue?: T;
   fieldOldValue?: T;
   changeType: ChangeType;
 };
 
-type ObjectChanges<T> = {
+export type ObjectChanges<T> = {
   changeType: ChangeType;
-  changedFields?: FirestoreChangedFields<T>;
+  changedFields: FirestoreChangedFields<T>;
+};
+
+type ArrayChanges<T> = {
+  changeType: ChangeType;
+  elements: ObjectChanges<T>[];
 };
 
 type FirestoreChanges<T> = {
@@ -25,19 +27,51 @@ type FirestoreChanges<T> = {
   type: ChangeType; // High-level change for the document as a whole
 };
 
-type FirestoreChangedFields<T> = {
-  [K in keyof T]?: T[K] extends Array<infer U>
-    ? U extends Record<string, any>
-      ? // Array of objects
-        Array<ObjectChanges<U>> | ChangedField<T[K]> // If array of objects is entirely unchanged
-      : // Array of primitives
-        ChangedField<T[K]>
-    : T[K] extends Record<string, any>
-    ? // Nested object
-      ObjectChanges<T[K]>
-    : // Primitive or any other type
-      ChangedField<T[K]>;
-};
+/**
+ * ----------------------------------------
+ *  1) Utilities to detect optional vs. required keys
+ * ----------------------------------------
+ */
+type OptionalKeys<T> = {
+  // K is optional if "T extends Record<K, T[K]>" fails
+  [K in keyof T]-?: T extends Record<K, T[K]> ? never : K;
+}[keyof T];
+
+type RequiredKeys<T> = Exclude<keyof T, OptionalKeys<T>>;
+
+/**
+ * -------------------------------------------------------
+ *  2) Updated mapped type to preserve optional properties
+ * -------------------------------------------------------
+ */
+type FirestoreChangedFields<T> =
+  // 2.1) Required keys: must exist, i.e. no `?`
+  {
+    [K in RequiredKeys<T>]: T[K] extends Array<infer U>
+      ? U extends Record<string, any>
+        ? // Array of objects
+          ArrayChanges<U>
+        : // Array of primitives
+          ChangedField<T[K]>
+      : T[K] extends Record<string, any>
+      ? // Nested object
+        ObjectChanges<T[K]>
+      : // Primitive or any other type
+        ChangedField<T[K]>;
+  } & {
+    // 2.2) Optional keys: must be marked `?`
+    [K in OptionalKeys<T>]?: T[K] extends Array<infer U>
+      ? U extends Record<string, any>
+        ? // Array of objects
+          ArrayChanges<U>
+        : // Array of primitives
+          ChangedField<T[K]>
+      : T[K] extends Record<string, any>
+      ? // Nested object
+        ObjectChanges<T[K]>
+      : // Primitive or any other type
+        ChangedField<T[K]>;
+  };
 
 export class FirestoreEventAnalyzer {
   static getChanges<T extends Record<string, any>>(
@@ -47,11 +81,8 @@ export class FirestoreEventAnalyzer {
     const before = event.data?.before?.data() as T | undefined;
     const after = event.data?.after?.data() as T | undefined;
 
-    let docChangeType: ChangeType = 'update';
-    if (!before && after) docChangeType = 'addition';
-    else if (before && !after) docChangeType = 'deletion';
-    else if (before && after) docChangeType = 'update';
-    else if (!before && !after) docChangeType = 'unchanged'; // This is a weird edge case but let's handle it.
+    // Determine overall document change
+    const docChangeType = this.determineChangeType(before, after);
 
     return {
       changedFields: this.collectChangedFields(before, after),
@@ -62,228 +93,183 @@ export class FirestoreEventAnalyzer {
     };
   }
 
+  /**
+   * --------------------------------------------------
+   *  1) Top-level: collect changed fields for an object
+   * --------------------------------------------------
+   */
   private static collectChangedFields<T extends Record<string, any>>(
     before?: T,
     after?: T,
   ): FirestoreChangedFields<T> {
     const changedFields = {} as FirestoreChangedFields<T>;
 
-    // If both undefined, there's no data, so no fields
-    if (!before && !after) {
-      return changedFields;
-    }
+    if (!before && !after) return changedFields; // No data at all => nothing to collect
 
+    // Collect all field names from "before" and "after"
     const allFields = new Set([
-      ...(before ? Object.keys(before) : []),
-      ...(after ? Object.keys(after) : []),
+      ...Object.keys(before ?? {}),
+      ...Object.keys(after ?? {}),
     ]);
 
-    allFields.forEach((fieldName) => {
+    for (const fieldName of allFields) {
       const beforeValue = before?.[fieldName];
       const afterValue = after?.[fieldName];
 
-      // Decide the top-level change type for this field
-      let fieldChangeType: ChangeType = 'unchanged'; // assume unchanged by default
+      // Analyze the change for this particular field
+      const analyzedChange = this.analyzeValueChange(beforeValue, afterValue);
 
-      if (beforeValue === undefined && afterValue !== undefined) {
-        fieldChangeType = 'addition';
-      } else if (beforeValue !== undefined && afterValue === undefined) {
-        fieldChangeType = 'deletion';
-      } else if (
-        beforeValue !== undefined &&
-        afterValue !== undefined &&
-        !this.deepEqual(beforeValue, afterValue)
-      ) {
-        // We'll refine it further below for arrays/objects
-        fieldChangeType = 'update';
-      }
-
-      // 1) Array of primitives or objects
-      if (Array.isArray(beforeValue) || Array.isArray(afterValue)) {
-        // If either is not an array, or if one array is missing => it's an update, addition, or deletion
-        if (!Array.isArray(beforeValue) || !Array.isArray(afterValue)) {
-          changedFields[fieldName as Keyof<T>] = {
-            fieldName: fieldName as Keyof<T>,
-            fieldOldValue: beforeValue,
-            fieldNewValue: afterValue,
-            changeType: fieldChangeType,
-          } as any;
-        } else {
-          // Both are arrays
-          // Check if array is of primitives
-          if (
-            this.isArrayOfPrimitives(beforeValue) &&
-            this.isArrayOfPrimitives(afterValue)
-          ) {
-            // If they're the same => unchanged
-            if (this.deepEqual(beforeValue, afterValue)) {
-              changedFields[fieldName as Keyof<T>] = {
-                fieldName: fieldName as Keyof<T>,
-                fieldOldValue: beforeValue,
-                fieldNewValue: afterValue,
-                changeType: 'unchanged',
-              } as any;
-            } else {
-              // There's a difference => update
-              changedFields[fieldName as Keyof<T>] = {
-                fieldName: fieldName as Keyof<T>,
-                fieldOldValue: beforeValue,
-                fieldNewValue: afterValue,
-                changeType: fieldChangeType,
-              } as any;
-            }
-          } else {
-            // Array of objects
-            const arrayChanges = this.getArrayChanges(
-              beforeValue as any[],
-              afterValue as any[],
-            );
-
-            // If all items are unchanged & arrays are the same length => the entire array is unchanged
-            if (
-              arrayChanges.every((c) => c.changeType === 'unchanged') &&
-              beforeValue.length === afterValue.length
-            ) {
-              // store a single "unchanged" node for the field
-              changedFields[fieldName as Keyof<T>] = {
-                fieldName: fieldName as Keyof<T>,
-                fieldOldValue: beforeValue,
-                fieldNewValue: afterValue,
-                changeType: 'unchanged',
-              } as any;
-            } else {
-              // otherwise, store the array of object-changes
-              changedFields[fieldName as Keyof<T>] = arrayChanges as any;
-            }
-          }
-        }
-      }
-      // 2) Nested object
-      else if (
-        this.isObject(beforeValue) &&
-        this.isObject(afterValue) &&
-        beforeValue &&
-        afterValue
-      ) {
-        // Get nested object changes
-        const nestedChanges = this.getObjectChanges(beforeValue, afterValue);
-
-        // If all fields inside the object are unchanged => entire object is unchanged
-        if (
-          nestedChanges.changeType === 'update' &&
-          nestedChanges.changedFields &&
-          Object.keys(nestedChanges.changedFields).every((f) => {
-            const field = (nestedChanges.changedFields as any)[f];
-            return field.changeType === 'unchanged';
-          })
-        ) {
-          nestedChanges.changeType = 'unchanged';
-        }
-
-        changedFields[fieldName as Keyof<T>] = nestedChanges as any;
-      }
-      // 3) Primitives
-      else {
-        // Store field
-        changedFields[fieldName as Keyof<T>] = {
-          fieldName: fieldName as Keyof<T>,
-          fieldOldValue: beforeValue,
-          fieldNewValue: afterValue,
-          changeType: fieldChangeType,
-        } as any;
-      }
-    });
+      // Only store if there's a real structure to keep (e.g. changedFields, items, or changed field).
+      (changedFields as any)[fieldName] = analyzedChange;
+    }
 
     return changedFields;
   }
 
+  /**
+   * ---------------------------------------------------------------------
+   *  2) Single function that decides how to represent the field's change
+   * ---------------------------------------------------------------------
+   */
+  private static analyzeValueChange(
+    beforeValue: any,
+    afterValue: any,
+  ): ChangedField<any> | ObjectChanges<any> | ArrayChanges<any> {
+    // High-level change for this field
+    const fieldChangeType = this.determineChangeType(beforeValue, afterValue);
+
+    // Case A: One is array, the other is not => treat as a simple ChangedField
+    if (Array.isArray(beforeValue) !== Array.isArray(afterValue)) {
+      return {
+        fieldOldValue: beforeValue,
+        fieldNewValue: afterValue,
+        changeType: fieldChangeType,
+      };
+    }
+
+    // Case B: Both are arrays
+    if (Array.isArray(beforeValue) && Array.isArray(afterValue)) {
+      // Are these arrays of primitives or arrays of objects?
+      const arraysOfPrimitives =
+        this.isArrayOfPrimitives(beforeValue) &&
+        this.isArrayOfPrimitives(afterValue);
+
+      if (arraysOfPrimitives) {
+        // Arrays of primitives => treat as a single ChangedField
+        return {
+          fieldOldValue: beforeValue,
+          fieldNewValue: afterValue,
+          changeType: fieldChangeType,
+        };
+      } else {
+        // Arrays of objects => produce ArrayChanges
+        const items = this.getArrayChanges(
+          beforeValue as Record<string, any>[],
+          afterValue as Record<string, any>[],
+        );
+        // If the entire array is effectively unchanged at the item level, mark as unchanged
+        const allUnchanged =
+          fieldChangeType === 'unchanged' &&
+          items.every((i) => i.changeType === 'unchanged');
+
+        return {
+          changeType: allUnchanged ? 'unchanged' : fieldChangeType,
+          elements: items,
+        };
+      }
+    }
+
+    // Case C: Both values are plain objects
+    if (this.isObject(beforeValue) && this.isObject(afterValue)) {
+      // Compare fields recursively
+      const changedFields = this.collectChangedFields(beforeValue, afterValue);
+      // If all nested fields are unchanged, override the changeType to 'unchanged'
+      const allUnchanged =
+        fieldChangeType === 'unchanged' ||
+        Object.values(changedFields).every(
+          (val: any) => val.changeType === 'unchanged',
+        );
+
+      return {
+        changeType: allUnchanged ? 'unchanged' : fieldChangeType,
+        changedFields,
+      };
+    }
+
+    // Case D: Primitives (or differing types) => store as ChangedField
+    return {
+      fieldOldValue: beforeValue,
+      fieldNewValue: afterValue,
+      changeType: fieldChangeType,
+    };
+  }
+
+  /**
+   * --------------------------------------------
+   *  3) Compare arrays of objects item-by-item
+   * --------------------------------------------
+   */
   private static getArrayChanges<T extends Record<string, any>>(
     before: T[] = [],
     after: T[] = [],
-  ): Array<ObjectChanges<T>> {
-    const changes: Array<ObjectChanges<T>> = [];
+  ): ObjectChanges<T>[] {
+    const changes: ObjectChanges<T>[] = [];
+    const maxLen = Math.max(before.length, after.length);
 
-    const maxLength = Math.max(before.length, after.length);
-
-    for (let i = 0; i < maxLength; i++) {
+    for (let i = 0; i < maxLen; i++) {
       const beforeItem = before[i];
       const afterItem = after[i];
+      const itemChangeType = this.determineChangeType(beforeItem, afterItem);
 
-      if (beforeItem === undefined && afterItem !== undefined) {
-        // Entire item added
+      if (itemChangeType === 'addition') {
         changes.push({
           changeType: 'addition',
           changedFields: this.collectChangedFields(undefined, afterItem),
         });
-      } else if (beforeItem !== undefined && afterItem === undefined) {
-        // Entire item removed
+      } else if (itemChangeType === 'deletion') {
         changes.push({
           changeType: 'deletion',
           changedFields: this.collectChangedFields(beforeItem, undefined),
         });
-      } else if (beforeItem !== undefined && afterItem !== undefined) {
-        // Compare fields in the array item
-        const itemChanges = this.collectChangedFields(beforeItem, afterItem);
-
-        // If every field in itemChanges is unchanged => item is unchanged
-        if (
-          Object.keys(itemChanges).every((k) => {
-            const field = (itemChanges as any)[k];
-            return field.changeType === 'unchanged';
-          })
-        ) {
-          changes.push({
-            changeType: 'unchanged',
-            changedFields: itemChanges,
-          });
-        } else {
-          changes.push({
-            changeType: 'update',
-            changedFields: itemChanges,
-          });
-        }
+      } else if (itemChangeType === 'update') {
+        // Compare fields inside each item
+        const changedFields = this.collectChangedFields(beforeItem, afterItem);
+        // If everything within is unchanged, treat item as unchanged
+        const allUnchanged = Object.values(changedFields).every(
+          (val: any) => val.changeType === 'unchanged',
+        );
+        changes.push({
+          changeType: allUnchanged ? 'unchanged' : 'update',
+          changedFields,
+        });
+      } else {
+        // 'unchanged'
+        changes.push({
+          changeType: 'unchanged',
+          changedFields: this.collectChangedFields(beforeItem, afterItem),
+        });
       }
     }
 
     return changes;
   }
 
-  private static getObjectChanges<T extends Record<string, any>>(
-    before?: T,
-    after?: T,
-  ): ObjectChanges<T> {
-    if (!before && !after) {
-      return {
-        changeType: 'unchanged',
-      };
+  /**
+   * -----------------------------------------------------------------
+   *  4) Helper to figure out "addition", "deletion", "update", etc.
+   * -----------------------------------------------------------------
+   */
+  private static determineChangeType(before: any, after: any): ChangeType {
+    if (before === undefined && after !== undefined) return 'addition';
+    if (before !== undefined && after === undefined) return 'deletion';
+    if (
+      before !== undefined &&
+      after !== undefined &&
+      !this.deepEqual(before, after)
+    ) {
+      return 'update';
     }
-    if (!before && after) {
-      return {
-        changeType: 'addition',
-        changedFields: this.collectChangedFields(before, after),
-      };
-    }
-    if (before && !after) {
-      return {
-        changeType: 'deletion',
-        changedFields: this.collectChangedFields(before, after),
-      };
-    }
-
-    // Both exist
-    const changedFields = this.collectChangedFields(before, after);
-    // If everything is unchanged, let's mark it as unchanged
-    const allUnchanged =
-      Object.keys(changedFields).length > 0 &&
-      Object.keys(changedFields).every((k) => {
-        const field = (changedFields as any)[k];
-        return field.changeType === 'unchanged';
-      });
-
-    return {
-      changeType: allUnchanged ? 'unchanged' : 'update',
-      changedFields,
-    };
+    return 'unchanged';
   }
 
   /**
@@ -302,22 +288,26 @@ export class FirestoreEventAnalyzer {
 
   /**
    * Utility: Deep equality check for primitives, arrays, or plain objects
-   * You can replace this with something more robust (like lodash.isEqual) if desired
    */
   private static deepEqual(a: any, b: any): boolean {
     if (a === b) return true;
     if (typeof a !== typeof b) return false;
 
+    // Compare arrays
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) return false;
-      return a.every((val, index) => this.deepEqual(val, b[index]));
-    } else if (this.isObject(a) && this.isObject(b)) {
+      return a.every((val, i) => this.deepEqual(val, b[i]));
+    }
+
+    // Compare objects
+    if (this.isObject(a) && this.isObject(b)) {
       const aKeys = Object.keys(a);
       const bKeys = Object.keys(b);
       if (aKeys.length !== bKeys.length) return false;
       return aKeys.every((key) => this.deepEqual(a[key], b[key]));
     }
 
+    // Fallback: compare primitive values
     return false;
   }
 }
