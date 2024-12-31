@@ -29,8 +29,8 @@ function mockFirestoreEvent<T>(
 }
 
 describe('FirestoreEventAnalyzer', () => {
-  describe('getChanges', () => {
-    it('should detect document addition (before is undefined, after is defined)', () => {
+  describe('getChanges - Document-level', () => {
+    it('should detect document addition', () => {
       const beforeData = undefined;
       const afterData = { name: 'Alice', age: 25 };
       const event = mockFirestoreEvent(beforeData, afterData);
@@ -44,6 +44,7 @@ describe('FirestoreEventAnalyzer', () => {
       expect(changes.documentId).toBe('docId');
       expect(changes.eventId).toBe('testEventId');
       expect(changes.madeAt.toISOString()).toBe('2021-10-01T00:00:00.000Z');
+
       expect(changes.changedFields).toMatchObject({
         name: {
           fieldName: 'name',
@@ -60,7 +61,7 @@ describe('FirestoreEventAnalyzer', () => {
       });
     });
 
-    it('should detect document deletion (before is defined, after is undefined)', () => {
+    it('should detect document deletion', () => {
       const beforeData = { name: 'Bob', age: 30 };
       const afterData = undefined;
       const event = mockFirestoreEvent(beforeData, afterData);
@@ -87,7 +88,7 @@ describe('FirestoreEventAnalyzer', () => {
       });
     });
 
-    it('should detect document update (before and after defined)', () => {
+    it('should detect document update', () => {
       const beforeData = { name: 'Charlie', age: 20, city: 'NYC' };
       const afterData = { name: 'Charlie', age: 21, city: 'LA' };
       const event = mockFirestoreEvent(beforeData, afterData);
@@ -98,8 +99,14 @@ describe('FirestoreEventAnalyzer', () => {
       );
 
       expect(changes.type).toBe('update');
-      // Only age and city should be updated
+      // Check changed fields
       expect(changes.changedFields).toMatchObject({
+        name: {
+          fieldName: 'name',
+          fieldOldValue: 'Charlie',
+          fieldNewValue: 'Charlie',
+          changeType: 'unchanged',
+        },
         age: {
           fieldName: 'age',
           fieldOldValue: 20,
@@ -113,13 +120,53 @@ describe('FirestoreEventAnalyzer', () => {
           changeType: 'update',
         },
       });
+    });
 
-      // Ensure name is not listed as changed
-      expect(changes.changedFields).not.toHaveProperty('name');
+    it('should detect document unchanged if both before and after are undefined', () => {
+      // Edge case: no data at all
+      const event = mockFirestoreEvent(undefined, undefined);
+      const changes = FirestoreEventAnalyzer.getChanges<Record<string, any>>(
+        'docId',
+        event,
+      );
+
+      expect(changes.type).toBe('unchanged');
+      expect(changes.changedFields).toEqual({});
     });
   });
 
   describe('Nested objects', () => {
+    it('should detect unchanged nested object', () => {
+      const beforeData = { user: { firstName: 'Dave', lastName: 'Doe' } };
+      const afterData = { user: { firstName: 'Dave', lastName: 'Doe' } };
+      const event = mockFirestoreEvent(beforeData, afterData);
+
+      const changes = FirestoreEventAnalyzer.getChanges<typeof beforeData>(
+        'docId',
+        event,
+      );
+      const userChanges = changes.changedFields.user;
+
+      expect(changes.type).toBe('update');
+      expect(userChanges).toMatchObject({
+        changeType: 'unchanged',
+      });
+      expect(userChanges?.changedFields).toMatchObject({
+        firstName: {
+          fieldName: 'firstName',
+          fieldOldValue: 'Dave',
+          fieldNewValue: 'Dave',
+          changeType: 'unchanged',
+        },
+        lastName: {
+          fieldName: 'lastName',
+          fieldOldValue: 'Doe',
+          fieldNewValue: 'Doe',
+          changeType: 'unchanged',
+        },
+      });
+    });
+
     it('should detect nested object changes', () => {
       const beforeData = {
         user: {
@@ -139,13 +186,19 @@ describe('FirestoreEventAnalyzer', () => {
         'docId',
         event,
       );
-      const changedFields = changes.changedFields.user?.changedFields;
+      const userChanges = changes.changedFields.user;
 
       expect(changes.type).toBe('update');
-      expect(changedFields).toBeDefined();
-      expect(changedFields).toMatchObject({
+      // user object is updated or unchanged?
+      expect(userChanges?.changeType).toBe('update');
+      // inside user
+      expect(userChanges?.changedFields).toMatchObject({
+        firstName: {
+          fieldOldValue: 'Dave',
+          fieldNewValue: 'Dave',
+          changeType: 'unchanged',
+        },
         lastName: {
-          fieldName: 'lastName',
           fieldOldValue: 'Doe',
           fieldNewValue: 'Smith',
           changeType: 'update',
@@ -155,6 +208,29 @@ describe('FirestoreEventAnalyzer', () => {
   });
 
   describe('Arrays of primitives', () => {
+    it('should detect unchanged arrays of primitives', () => {
+      const beforeData = { tags: ['red', 'blue'] };
+      const afterData = { tags: ['red', 'blue'] };
+      const event = mockFirestoreEvent(beforeData, afterData);
+
+      const changes = FirestoreEventAnalyzer.getChanges<typeof beforeData>(
+        'docId',
+        event,
+      );
+
+      // The document is 'update' at top-level because before and after exist
+      expect(changes.type).toBe('update');
+      // But the tags field should be 'unchanged'
+      expect(changes.changedFields).toMatchObject({
+        tags: {
+          fieldName: 'tags',
+          fieldOldValue: ['red', 'blue'],
+          fieldNewValue: ['red', 'blue'],
+          changeType: 'unchanged',
+        },
+      });
+    });
+
     it('should detect changes in arrays of primitives', () => {
       const beforeData = { tags: ['red', 'blue'] };
       const afterData = { tags: ['red', 'blue', 'green'] };
@@ -176,23 +252,33 @@ describe('FirestoreEventAnalyzer', () => {
         },
       });
     });
+  });
 
-    it('should not detect changes if arrays of primitives are identical', () => {
-      const beforeData = { tags: ['red', 'blue'] };
-      const afterData = { tags: ['red', 'blue'] };
+  describe('Arrays of objects', () => {
+    it('should mark entire array as unchanged if elements are identical', () => {
+      const beforeData = {
+        items: [{ name: 'Item1' }, { name: 'Item2' }],
+      };
+      const afterData = {
+        items: [{ name: 'Item1' }, { name: 'Item2' }],
+      };
       const event = mockFirestoreEvent(beforeData, afterData);
 
       const changes = FirestoreEventAnalyzer.getChanges<typeof beforeData>(
         'docId',
         event,
       );
+      const itemsField = changes.changedFields.items as any;
 
-      // No changes should be reported
-      expect(changes.changedFields).toEqual({});
+      expect(changes.type).toBe('update');
+      expect(itemsField).toMatchObject({
+        fieldName: 'items',
+        fieldOldValue: [{ name: 'Item1' }, { name: 'Item2' }],
+        fieldNewValue: [{ name: 'Item1' }, { name: 'Item2' }],
+        changeType: 'unchanged',
+      });
     });
-  });
 
-  describe('Arrays of objects', () => {
     it('should detect item addition within arrays of objects', () => {
       const beforeData = {
         items: [{ name: 'Item1' }, { name: 'Item2' }],
@@ -206,17 +292,27 @@ describe('FirestoreEventAnalyzer', () => {
         'docId',
         event,
       );
-      const itemChanges = changes.changedFields.items as any[];
+      const itemsChanges = changes.changedFields.items as any[];
 
       expect(changes.type).toBe('update');
-      expect(itemChanges).toHaveLength(3);
+      // Because the array is not identical, we have an array of changes
+      expect(itemsChanges).toHaveLength(3);
 
-      // Third item should show as an addition
-      expect(itemChanges[2]).toMatchObject({
+      // The first item should be unchanged
+      expect(itemsChanges[0]).toMatchObject({
+        changeType: 'unchanged',
+      });
+
+      // The second item should be unchanged
+      expect(itemsChanges[1]).toMatchObject({
+        changeType: 'unchanged',
+      });
+
+      // The third item should be an addition
+      expect(itemsChanges[2]).toMatchObject({
         changeType: 'addition',
         changedFields: {
           name: {
-            fieldName: 'name',
             fieldOldValue: undefined,
             fieldNewValue: 'Item3',
             changeType: 'addition',
@@ -238,17 +334,26 @@ describe('FirestoreEventAnalyzer', () => {
         'docId',
         event,
       );
-      const itemChanges = changes.changedFields.items as any[];
+      const itemsChanges = changes.changedFields.items as any[];
 
       expect(changes.type).toBe('update');
-      expect(itemChanges).toHaveLength(3); // Because we compare up to max length
+      expect(itemsChanges).toHaveLength(3);
 
-      // Third item should show as a deletion
-      expect(itemChanges[2]).toMatchObject({
+      // First item: unchanged
+      expect(itemsChanges[0]).toMatchObject({
+        changeType: 'unchanged',
+      });
+
+      // Second item: unchanged
+      expect(itemsChanges[1]).toMatchObject({
+        changeType: 'unchanged',
+      });
+
+      // Third item: deletion
+      expect(itemsChanges[2]).toMatchObject({
         changeType: 'deletion',
         changedFields: {
           name: {
-            fieldName: 'name',
             fieldOldValue: 'ItemC',
             fieldNewValue: undefined,
             changeType: 'deletion',
@@ -276,20 +381,41 @@ describe('FirestoreEventAnalyzer', () => {
         'docId',
         event,
       );
-      const itemChanges = changes.changedFields.items as any[];
+      const itemsChanges = changes.changedFields.items as any[];
 
       expect(changes.type).toBe('update');
-      expect(itemChanges).toHaveLength(2);
+      expect(itemsChanges).toHaveLength(2);
 
-      // Second item should show an update
-      expect(itemChanges[1]).toMatchObject({
+      // First item: unchanged
+      expect(itemsChanges[0]).toMatchObject({
+        changeType: 'unchanged',
+        changedFields: {
+          name: {
+            fieldOldValue: 'Item1',
+            fieldNewValue: 'Item1',
+            changeType: 'unchanged',
+          },
+          qty: {
+            fieldOldValue: 1,
+            fieldNewValue: 1,
+            changeType: 'unchanged',
+          },
+        },
+      });
+
+      // Second item: update
+      expect(itemsChanges[1]).toMatchObject({
         changeType: 'update',
         changedFields: {
+          name: {
+            changeType: 'unchanged',
+            fieldOldValue: 'Item2',
+            fieldNewValue: 'Item2',
+          },
           qty: {
-            fieldName: 'qty',
+            changeType: 'update',
             fieldOldValue: 5,
             fieldNewValue: 10,
-            changeType: 'update',
           },
         },
       });
