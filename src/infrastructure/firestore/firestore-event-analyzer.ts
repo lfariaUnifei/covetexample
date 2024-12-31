@@ -23,8 +23,8 @@ export class FirestoreEventAnalyzer {
   private static collectChangedFields<T extends Record<string, any>>(
     before?: T,
     after?: T,
-  ): ChangedField<T>[] {
-    const changedFields: ChangedField<T>[] = [];
+  ): Record<Keyof<T>, ChangedField<T>> {
+    const changedFields = {} as Record<Keyof<T>, ChangedField<T>>;
     const allFields = new Set([
       ...(before ? Object.keys(before) : []),
       ...(after ? Object.keys(after) : []),
@@ -41,12 +41,12 @@ export class FirestoreEventAnalyzer {
           afterValue as unknown[],
         );
         if (arrayChanges.length > 0) {
-          changedFields.push({
+          changedFields[fieldName as Keyof<T>] = {
             fieldName,
             fieldNewValue: afterValue,
             fieldOldValue: beforeValue,
             changeType: 'update', // Arrays are always "updated" when items change
-          });
+          };
         }
       } else if (
         typeof beforeValue === 'object' &&
@@ -59,17 +59,13 @@ export class FirestoreEventAnalyzer {
           beforeValue,
           afterValue,
         );
-        nestedChanges.forEach((nestedChange) => {
-          changedFields.push({
-            ...nestedChange,
-            fieldName: `${fieldName}.${String(
-              nestedChange.fieldName,
-            )}` as Keyof<T>,
-          });
+        Object.keys(nestedChanges).forEach((nestedFieldName) => {
+          changedFields[`${fieldName}.${nestedFieldName}` as Keyof<T>] =
+            nestedChanges[nestedFieldName];
         });
       } else if (beforeValue !== afterValue) {
         // Handle primitive comparison
-        changedFields.push({
+        changedFields[fieldName as Keyof<T>] = {
           fieldName,
           fieldNewValue: afterValue,
           fieldOldValue: beforeValue,
@@ -78,7 +74,7 @@ export class FirestoreEventAnalyzer {
             : !afterValue
             ? 'deletion'
             : 'update',
-        });
+        };
       }
     });
 
@@ -120,7 +116,7 @@ export type ChangedField<T> = {
 };
 
 export type FirestoreChanges<T> = {
-  changedFields: ChangedField<T>[];
+  changedFields: Record<Keyof<T>, ChangedField<T> | undefined>;
   documentId: string;
   eventId: string;
   madeAt: Date;
