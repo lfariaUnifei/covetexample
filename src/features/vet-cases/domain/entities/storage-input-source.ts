@@ -1,4 +1,4 @@
-import { ContentLocation, VariableContentLocation } from '../../../../domain';
+import { ContentLocation } from '../../../../domain';
 import { InputSourceName } from './case-input';
 
 type _InputSourceData<
@@ -15,9 +15,10 @@ export type AudioInputSourceData<T extends ContentLocation = ContentLocation> =
     encoding: string;
     sampleRateHertz: string;
   };
-export type TextInputSourceData<
-  T extends ContentLocation = VariableContentLocation,
-> = _InputSourceData<'text', T>;
+export type TextInputSourceData<T extends ContentLocation> = _InputSourceData<
+  'text',
+  T
+>;
 
 export type InputSourceData<T extends ContentLocation = ContentLocation> =
   | AudioInputSourceData<T>

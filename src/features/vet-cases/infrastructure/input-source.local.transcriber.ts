@@ -1,3 +1,4 @@
+import { ContentLocationService } from '../../../domain';
 import {
   TranscribedInputSource,
   TranscribingInputSource,
@@ -5,9 +6,14 @@ import {
 import { InputSourceTranscriber } from '../domain/input-source.service';
 
 export class InputSourceLocalTranscriber implements InputSourceTranscriber {
-  transcribe(
+  async transcribe(
     inputSource: TranscribingInputSource,
+    contentLocationService: ContentLocationService,
   ): Promise<TranscribedInputSource> {
-    throw new Error('Method not implemented.');
+    return {
+      ...inputSource,
+      status: 'transcribed',
+      transcription: 'This is a transcription',
+    };
   }
 }
