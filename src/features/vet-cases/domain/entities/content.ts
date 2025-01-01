@@ -1,9 +1,9 @@
-import { CaseInputSourceRef } from './case-input';
+import { CaseInputSource } from './case-input';
 import { ContentRequest } from './content-request';
 
 export type Content = {
   contentId: string;
   customName: string;
-  inputSource: CaseInputSourceRef;
+  inputSource: CaseInputSource;
   requests: ContentRequest[];
 };

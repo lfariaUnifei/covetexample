@@ -1,30 +1,42 @@
 import { DocumentSnapshot } from 'firebase-admin/firestore';
 import { Change, FirestoreEvent } from 'firebase-functions/firestore';
 
-type ChangeType = 'addition' | 'update' | 'deletion' | 'unchanged';
+export type FirestoreChangeType =
+  | 'addition'
+  | 'update'
+  | 'deletion'
+  | 'unchanged';
 
 type ChangedField<T> = {
-  fieldNewValue?: T;
-  fieldOldValue?: T;
-  changeType: ChangeType;
+  fieldNewValue: T;
+  fieldOldValue: T;
+  changeType: FirestoreChangeType;
 };
 
 export type ObjectChanges<T> = {
-  changeType: ChangeType;
+  changeType: FirestoreChangeType;
   changedFields: FirestoreChangedFields<T>;
+  /**
+   * The entire old object, if available.
+   */
+  oldObject?: T;
+  /**
+   * The entire new object, if available.
+   */
+  newObject?: T;
 };
 
 type ArrayChanges<T> = {
-  changeType: ChangeType;
+  changeType: FirestoreChangeType;
   elements: ObjectChanges<T>[];
 };
 
-type FirestoreChanges<T> = {
+export type FirestoreChanges<T> = {
   changedFields: FirestoreChangedFields<T>;
   documentId: string;
   eventId: string;
   madeAt: Date;
-  type: ChangeType; // High-level change for the document as a whole
+  type: FirestoreChangeType; // High-level change for the document as a whole
 };
 
 /**
@@ -179,7 +191,7 @@ export class FirestoreEventAnalyzer {
       }
     }
 
-    // Case C: Both values are plain objects
+    // Case C: Both values are plain objects => return ObjectChanges
     if (this.isObject(beforeValue) && this.isObject(afterValue)) {
       // Compare fields recursively
       const changedFields = this.collectChangedFields(beforeValue, afterValue);
@@ -193,6 +205,8 @@ export class FirestoreEventAnalyzer {
       return {
         changeType: allUnchanged ? 'unchanged' : fieldChangeType,
         changedFields,
+        oldObject: beforeValue,
+        newObject: afterValue,
       };
     }
 
@@ -225,11 +239,15 @@ export class FirestoreEventAnalyzer {
         changes.push({
           changeType: 'addition',
           changedFields: this.collectChangedFields(undefined, afterItem),
+          oldObject: undefined,
+          newObject: afterItem,
         });
       } else if (itemChangeType === 'deletion') {
         changes.push({
           changeType: 'deletion',
           changedFields: this.collectChangedFields(beforeItem, undefined),
+          oldObject: beforeItem,
+          newObject: undefined,
         });
       } else if (itemChangeType === 'update') {
         // Compare fields inside each item
@@ -241,12 +259,16 @@ export class FirestoreEventAnalyzer {
         changes.push({
           changeType: allUnchanged ? 'unchanged' : 'update',
           changedFields,
+          oldObject: beforeItem,
+          newObject: afterItem,
         });
       } else {
         // 'unchanged'
         changes.push({
           changeType: 'unchanged',
           changedFields: this.collectChangedFields(beforeItem, afterItem),
+          oldObject: beforeItem,
+          newObject: afterItem,
         });
       }
     }
@@ -259,7 +281,10 @@ export class FirestoreEventAnalyzer {
    *  4) Helper to figure out "addition", "deletion", "update", etc.
    * -----------------------------------------------------------------
    */
-  private static determineChangeType(before: any, after: any): ChangeType {
+  private static determineChangeType(
+    before: any,
+    after: any,
+  ): FirestoreChangeType {
     if (before === undefined && after !== undefined) return 'addition';
     if (before !== undefined && after === undefined) return 'deletion';
     if (

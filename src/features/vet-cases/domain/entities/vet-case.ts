@@ -1,5 +1,5 @@
 import { v4 } from 'uuid';
-import { CaseInputSourceRef } from './case-input';
+import { CaseInputSource } from './case-input';
 import { Content } from './content';
 import { ContentRequest, ContentTemplateName } from './content-request';
 
@@ -7,7 +7,7 @@ export type VetCaseData = {
   ownerId: string;
   caseId: string;
   contents: Content[];
-  inputs: CaseInputSourceRef[];
+  inputs: CaseInputSource[];
 
   name: string;
 
@@ -18,7 +18,7 @@ export type VetCaseData = {
 export class VetCase {
   constructor(private readonly vetCase: VetCaseData) {}
 
-  getCase(): VetCaseData {
+  toData(): VetCaseData {
     return {
       ...this.vetCase,
       contents: [...this.vetCase.contents],
@@ -63,10 +63,13 @@ export class VetCase {
     });
   }
 
-  updateContentRequest(
+  updateProcessedContentRequest(
     contentId: string,
     updatedRequest: ContentRequest,
   ): void {
+    if (updatedRequest.result.status === 'processing') {
+      throw new Error('Invalid request status');
+    }
     const content = this.findContent(contentId);
     if (!content) {
       throw new Error('Content not found');
@@ -98,17 +101,17 @@ export class VetCase {
     return Boolean(this.findContent(contentId));
   }
 
-  findInput(inputId: string): CaseInputSourceRef | undefined {
+  findInput(inputId: string): CaseInputSource | undefined {
     const result = this.findInputIndex(inputId);
     return result ? { ...this.vetCase.inputs[result] } : undefined;
   }
 
-  setInputSourceAsTranscribed(inputId: string): void {
-    const index = this.findInputIndex(inputId);
+  updateInputSource(inputSource: CaseInputSource): void {
+    const index = this.findInputIndex(inputSource.id);
     if (index === undefined) {
       return;
     }
-    this.vetCase.inputs[index].status = 'transcribed';
+    this.vetCase.inputs[index] = inputSource;
   }
 
   private findInputIndex(inputId: string): number | undefined {

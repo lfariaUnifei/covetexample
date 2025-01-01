@@ -1,4 +1,4 @@
-import { ContentRequestProcessorFactory } from '../domain/content-request-generator';
+import { ContentRequestProcessorFactory } from '../domain/content-request.service';
 import { VetCaseRepository } from '../domain/vet-case.repository';
 
 export class ProcessContentRequestUsecase {
@@ -24,11 +24,11 @@ export class ProcessContentRequestUsecase {
       return;
     }
     const processor = await this.processorFactory.create(content);
-    const updated = await processor.process();
-    if (updated.templateName !== content.templateName) {
+    const processed = await processor.process();
+    if (processed.templateName !== content.templateName) {
       throw new Error('Generated an invalid processed content');
     }
-    vetCase.updateContentRequest(contentId, updated);
+    vetCase.updateProcessedContentRequest(contentId, processed);
     await this.caseRepository.save(vetCase);
   }
 }

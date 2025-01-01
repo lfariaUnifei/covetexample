@@ -1,15 +1,14 @@
 import {
   InputSourceProcessor,
-  InputSourceRawContent,
+  InputSourceStorage,
   InputSourceTranscriber,
-} from '../domain/input-source-service';
-import { InputSourceRepository } from '../domain/input-source.repository';
+} from '../domain/input-source.service';
 import { VetCaseRepository } from '../domain/vet-case.repository';
 
 export class ProcessInputSourceUsecase {
   constructor(
     private readonly caseRepository: VetCaseRepository,
-    private readonly inputSourceRepository: InputSourceRepository,
+    private readonly storage: InputSourceStorage,
     private readonly processor: InputSourceProcessor,
     private readonly transcriber: InputSourceTranscriber,
   ) {}
@@ -17,7 +16,6 @@ export class ProcessInputSourceUsecase {
   async execute({
     caseId,
     inputSourceId,
-    rawContent,
   }: ProcessInputSourceParams): Promise<void> {
     const vetCase = await this.caseRepository.ofId(caseId);
     if (!vetCase) {
@@ -27,15 +25,16 @@ export class ProcessInputSourceUsecase {
     if (!input || input.status !== 'transcribing') {
       return;
     }
-    const processedData = await this.processor.process(rawContent);
-    const uploaded = await this.inputSourceRepository.upload({
-      inputSourceId,
+    const processedData = await this.processor.process(input);
+    const uploaded = await this.storage.upload({
       caseId,
+      id: inputSourceId,
       data: processedData,
     });
-    const transcription = await this.transcriber.transcribe(uploaded);
-    await this.inputSourceRepository.save(transcription);
-    vetCase.setInputSourceAsTranscribed(inputSourceId);
+    input.content = uploaded.data.content;
+
+    const transcribed = await this.transcriber.transcribe(input);
+    vetCase.updateInputSource(transcribed);
     await this.caseRepository.save(vetCase);
   }
 }
@@ -43,5 +42,4 @@ export class ProcessInputSourceUsecase {
 export type ProcessInputSourceParams = {
   caseId: string;
   inputSourceId: string;
-  rawContent: InputSourceRawContent;
 };
