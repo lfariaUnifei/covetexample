@@ -42,19 +42,24 @@ export class VetCaseChangesAnalyzer {
     const updatedContents = contentChanges.elements.filter(
       (item) => !ignoreChanges.includes(item.changeType),
     );
-    const updatedRequests = updatedContents.map((content) => {
-      const requests = content.changedFields.requests.elements.filter(
-        (item) => !ignoreChanges.includes(item.changeType),
-      );
-      return requests.map((item) => ({
-        caseId: this.changes.documentId,
-        contentId: content.changedFields.contentId.fieldNewValue,
-        requestId: item.changedFields.requestId.fieldNewValue,
-      }));
-    });
+    const updatedRequests = updatedContents
+      .map((content) => {
+        const requests = content.changedFields.requests.elements.filter(
+          (item) => !ignoreChanges.includes(item.changeType),
+        );
+        return requests.map((item) => ({
+          caseId: this.changes.documentId,
+          contentId: content.changedFields.contentId.fieldNewValue,
+          requestId: item.changedFields.requestId.fieldNewValue,
+        }));
+      })
+      .flat();
+    if (updatedRequests.length === 0) {
+      return undefined;
+    }
     return {
       name: 'ContentRequestUpdated',
-      requests: updatedRequests.flat(),
+      requests: updatedRequests,
     };
   }
 }

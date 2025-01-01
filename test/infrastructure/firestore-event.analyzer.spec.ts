@@ -217,9 +217,19 @@ describe('FirestoreEventAnalyzer', () => {
       // But the tags field should be 'unchanged'
       expect(changes.changedFields).toMatchObject({
         tags: {
-          fieldOldValue: ['red', 'blue'],
-          fieldNewValue: ['red', 'blue'],
           changeType: 'unchanged',
+          elements: [
+            {
+              fieldOldValue: 'red',
+              fieldNewValue: 'red',
+              changeType: 'unchanged',
+            },
+            {
+              fieldOldValue: 'blue',
+              fieldNewValue: 'blue',
+              changeType: 'unchanged',
+            },
+          ],
         },
       });
     });
@@ -238,9 +248,24 @@ describe('FirestoreEventAnalyzer', () => {
       // We expect tags to have changed
       expect(changes.changedFields).toMatchObject({
         tags: {
-          fieldOldValue: ['red', 'blue'],
-          fieldNewValue: ['red', 'blue', 'green'],
           changeType: 'update',
+          elements: [
+            {
+              fieldOldValue: 'red',
+              fieldNewValue: 'red',
+              changeType: 'unchanged',
+            },
+            {
+              fieldOldValue: 'blue',
+              fieldNewValue: 'blue',
+              changeType: 'unchanged',
+            },
+            {
+              fieldOldValue: undefined,
+              fieldNewValue: 'green',
+              changeType: 'addition',
+            },
+          ],
         },
       });
     });
@@ -271,6 +296,30 @@ describe('FirestoreEventAnalyzer', () => {
           fieldNewValue: beforeData.items[index].name,
           changeType: 'unchanged',
         });
+      });
+    });
+
+    it('should addition when beforeData is undefined', () => {
+      const afterData = {
+        items: [{ name: 'Item1' }],
+      };
+      const event = mockFirestoreEvent(undefined, afterData);
+      const changes = FirestoreEventAnalyzer.getChanges<typeof afterData>(
+        'docId',
+        event,
+      );
+      const itemsChanges = changes.changedFields.items.elements;
+      expect(changes.type).toBe('addition');
+      expect(itemsChanges).toHaveLength(1);
+      expect(itemsChanges[0]).toMatchObject({
+        changeType: 'addition',
+        changedFields: {
+          name: {
+            fieldOldValue: undefined,
+            fieldNewValue: 'Item1',
+            changeType: 'addition',
+          },
+        },
       });
     });
 

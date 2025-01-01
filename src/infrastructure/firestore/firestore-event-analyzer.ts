@@ -1,13 +1,18 @@
 import { DocumentSnapshot } from 'firebase-admin/firestore';
 import { Change, FirestoreEvent } from 'firebase-functions/firestore';
 
+/**
+ * -----------------------------
+ *  Types
+ * -----------------------------
+ */
 export type FirestoreChangeType =
   | 'addition'
   | 'update'
   | 'deletion'
   | 'unchanged';
 
-type ChangedField<T> = {
+export type ChangedField<T> = {
   fieldNewValue: T;
   fieldOldValue: T;
   changeType: FirestoreChangeType;
@@ -16,19 +21,45 @@ type ChangedField<T> = {
 export type ObjectChanges<T> = {
   changeType: FirestoreChangeType;
   changedFields: FirestoreChangedFields<T>;
-  /**
-   * The entire old object, if available.
-   */
   oldObject?: T;
-  /**
-   * The entire new object, if available.
-   */
   newObject?: T;
 };
 
-type ArrayChanges<T> = {
+export type ArrayChanges<T> = {
   changeType: FirestoreChangeType;
-  elements: ObjectChanges<T>[];
+  elements: ArrayElementChange<T>[];
+};
+
+/**
+ * Key mapping utility for a Firestore object:
+ *   - If a property is an array -> ArrayChanges
+ *   - If a property is an object -> ObjectChanges
+ *   - Otherwise -> ChangedField
+ */
+type FirestoreFieldChanges<T> = T extends any[]
+  ? ArrayChanges<T[number]>
+  : T extends Record<string, unknown>
+  ? ObjectChanges<T>
+  : ChangedField<T>;
+
+type ArrayElementChange<T> = FirestoreFieldChanges<T>;
+
+/**
+ * Optional vs. required keys
+ */
+type OptionalKeys<T> = {
+  [K in keyof T]-?: T extends Record<K, T[K]> ? never : K;
+}[keyof T];
+
+type RequiredKeys<T> = Exclude<keyof T, OptionalKeys<T>>;
+
+/**
+ * The main shape for changed fields in an object
+ */
+export type FirestoreChangedFields<T> = {
+  [K in RequiredKeys<T>]: FirestoreFieldChanges<T[K]>;
+} & {
+  [K in OptionalKeys<T>]?: FirestoreFieldChanges<T[K]>;
 };
 
 export type FirestoreChanges<T> = {
@@ -36,55 +67,14 @@ export type FirestoreChanges<T> = {
   documentId: string;
   eventId: string;
   madeAt: Date;
-  type: FirestoreChangeType; // High-level change for the document as a whole
+  type: FirestoreChangeType; // High-level change for the entire document
 };
 
 /**
- * ----------------------------------------
- *  1) Utilities to detect optional vs. required keys
- * ----------------------------------------
+ * -----------------------------
+ *  The FirestoreEventAnalyzer
+ * -----------------------------
  */
-type OptionalKeys<T> = {
-  // K is optional if "T extends Record<K, T[K]>" fails
-  [K in keyof T]-?: T extends Record<K, T[K]> ? never : K;
-}[keyof T];
-
-type RequiredKeys<T> = Exclude<keyof T, OptionalKeys<T>>;
-
-/**
- * -------------------------------------------------------
- *  2) Updated mapped type to preserve optional properties
- * -------------------------------------------------------
- */
-type FirestoreChangedFields<T> =
-  // 2.1) Required keys: must exist, i.e. no `?`
-  {
-    [K in RequiredKeys<T>]: T[K] extends Array<infer U>
-      ? U extends Record<string, any>
-        ? // Array of objects
-          ArrayChanges<U>
-        : // Array of primitives
-          ChangedField<T[K]>
-      : T[K] extends Record<string, any>
-      ? // Nested object
-        ObjectChanges<T[K]>
-      : // Primitive or any other type
-        ChangedField<T[K]>;
-  } & {
-    // 2.2) Optional keys: must be marked `?`
-    [K in OptionalKeys<T>]?: T[K] extends Array<infer U>
-      ? U extends Record<string, any>
-        ? // Array of objects
-          ArrayChanges<U>
-        : // Array of primitives
-          ChangedField<T[K]>
-      : T[K] extends Record<string, any>
-      ? // Nested object
-        ObjectChanges<T[K]>
-      : // Primitive or any other type
-        ChangedField<T[K]>;
-  };
-
 export class FirestoreEventAnalyzer {
   static getChanges<T extends Record<string, any>>(
     documentId: string,
@@ -93,7 +83,7 @@ export class FirestoreEventAnalyzer {
     const before = event.data?.before?.data() as T | undefined;
     const after = event.data?.after?.data() as T | undefined;
 
-    // Determine overall document change
+    // High-level "doc" change type
     const docChangeType = this.determineChangeType(before, after);
 
     return {
@@ -106,9 +96,7 @@ export class FirestoreEventAnalyzer {
   }
 
   /**
-   * --------------------------------------------------
-   *  1) Top-level: collect changed fields for an object
-   * --------------------------------------------------
+   * Collect changed fields for an object, returning a FirestoreChangedFields<T>.
    */
   private static collectChangedFields<T extends Record<string, any>>(
     before?: T,
@@ -116,9 +104,9 @@ export class FirestoreEventAnalyzer {
   ): FirestoreChangedFields<T> {
     const changedFields = {} as FirestoreChangedFields<T>;
 
-    if (!before && !after) return changedFields; // No data at all => nothing to collect
+    if (!before && !after) return changedFields;
 
-    // Collect all field names from "before" and "after"
+    // Gather all field names
     const allFields = new Set([
       ...Object.keys(before ?? {}),
       ...Object.keys(after ?? {}),
@@ -128,10 +116,7 @@ export class FirestoreEventAnalyzer {
       const beforeValue = before?.[fieldName];
       const afterValue = after?.[fieldName];
 
-      // Analyze the change for this particular field
       const analyzedChange = this.analyzeValueChange(beforeValue, afterValue);
-
-      // Only store if there's a real structure to keep (e.g. changedFields, items, or changed field).
       (changedFields as any)[fieldName] = analyzedChange;
     }
 
@@ -139,67 +124,61 @@ export class FirestoreEventAnalyzer {
   }
 
   /**
-   * ---------------------------------------------------------------------
-   *  2) Single function that decides how to represent the field's change
-   * ---------------------------------------------------------------------
+   * If either is undefined, treat it as an empty array,
+   * then compare them item-by-item.
    */
   private static analyzeValueChange(
     beforeValue: any,
     afterValue: any,
-  ): ChangedField<any> | ObjectChanges<any> | ArrayChanges<any> {
-    // High-level change for this field
+  ): FirestoreFieldChanges<any> {
     const fieldChangeType = this.determineChangeType(beforeValue, afterValue);
 
-    // Case A: One is array, the other is not => treat as a simple ChangedField
-    if (Array.isArray(beforeValue) !== Array.isArray(afterValue)) {
-      return {
-        fieldOldValue: beforeValue,
-        fieldNewValue: afterValue,
-        changeType: fieldChangeType,
-      };
-    }
+    // --------------------
+    // CASE A: Array logic
+    // --------------------
+    const beforeIsArrayOrUndefined =
+      Array.isArray(beforeValue) || beforeValue === undefined;
+    const afterIsArrayOrUndefined =
+      Array.isArray(afterValue) || afterValue === undefined;
 
-    // Case B: Both are arrays
-    if (Array.isArray(beforeValue) && Array.isArray(afterValue)) {
-      // Are these arrays of primitives or arrays of objects?
-      const arraysOfPrimitives =
-        this.isArrayOfPrimitives(beforeValue) &&
-        this.isArrayOfPrimitives(afterValue);
+    // If we want to treat "undefined" as empty array when the other side is an array:
+    if (beforeIsArrayOrUndefined && afterIsArrayOrUndefined) {
+      const beforeArr = Array.isArray(beforeValue) ? beforeValue : [];
+      const afterArr = Array.isArray(afterValue) ? afterValue : [];
 
-      if (arraysOfPrimitives) {
-        // Arrays of primitives => treat as a single ChangedField
-        return {
-          fieldOldValue: beforeValue,
-          fieldNewValue: afterValue,
-          changeType: fieldChangeType,
-        };
-      } else {
-        // Arrays of objects => produce ArrayChanges
-        const items = this.getArrayChanges(
-          beforeValue as Record<string, any>[],
-          afterValue as Record<string, any>[],
-        );
-        // If the entire array is effectively unchanged at the item level, mark as unchanged
+      // Now do array-level comparison
+      if (beforeArr || afterArr) {
+        const items = this.getArrayChanges(beforeArr, afterArr);
+
+        // If all items are unchanged at the element level, mark the entire array as unchanged
         const allUnchanged =
           fieldChangeType === 'unchanged' &&
-          items.every((i) => i.changeType === 'unchanged');
+          items.every((it) => it.changeType === 'unchanged');
 
         return {
           changeType: allUnchanged ? 'unchanged' : fieldChangeType,
           elements: items,
-        };
+        } as ArrayChanges<any>;
       }
     }
 
-    // Case C: Both values are plain objects => return ObjectChanges
-    if (this.isObject(beforeValue) && this.isObject(afterValue)) {
-      // Compare fields recursively
-      const changedFields = this.collectChangedFields(beforeValue, afterValue);
-      // If all nested fields are unchanged, override the changeType to 'unchanged'
+    // --------------------
+    // CASE B: Object logic
+    // --------------------
+    // If both (or either undefined) are objects => treat `undefined` as {}
+    const beforeIsObjectOrUndef =
+      beforeValue === undefined || this.isObject(beforeValue);
+    const afterIsObjectOrUndef =
+      afterValue === undefined || this.isObject(afterValue);
+
+    if (beforeIsObjectOrUndef && afterIsObjectOrUndef) {
+      const beforeObj = beforeValue ?? {};
+      const afterObj = afterValue ?? {};
+      const changedFields = this.collectChangedFields(beforeObj, afterObj);
       const allUnchanged =
         fieldChangeType === 'unchanged' ||
         Object.values(changedFields).every(
-          (val: any) => val.changeType === 'unchanged',
+          (ch) => ch?.changeType === 'unchanged',
         );
 
       return {
@@ -207,79 +186,43 @@ export class FirestoreEventAnalyzer {
         changedFields,
         oldObject: beforeValue,
         newObject: afterValue,
-      };
+      } as ObjectChanges<any>;
     }
 
-    // Case D: Primitives (or differing types) => store as ChangedField
+    // --------------------
+    // CASE C: Fallback -> ChangedField
+    // --------------------
     return {
       fieldOldValue: beforeValue,
       fieldNewValue: afterValue,
       changeType: fieldChangeType,
-    };
+    } as ChangedField<any>;
   }
 
   /**
-   * --------------------------------------------
-   *  3) Compare arrays of objects item-by-item
-   * --------------------------------------------
+   * Compare two arrays item-by-item. Each item can be a primitive, object, or nested array.
    */
-  private static getArrayChanges<T extends Record<string, any>>(
-    before: T[] = [],
-    after: T[] = [],
-  ): ObjectChanges<T>[] {
-    const changes: ObjectChanges<T>[] = [];
-    const maxLen = Math.max(before.length, after.length);
+  private static getArrayChanges<T>(
+    beforeArr: T[] = [],
+    afterArr: T[] = [],
+  ): ArrayElementChange<T>[] {
+    const changes: ArrayElementChange<T>[] = [];
+    const maxLen = Math.max(beforeArr.length, afterArr.length);
 
     for (let i = 0; i < maxLen; i++) {
-      const beforeItem = before[i];
-      const afterItem = after[i];
-      const itemChangeType = this.determineChangeType(beforeItem, afterItem);
-
-      if (itemChangeType === 'addition') {
-        changes.push({
-          changeType: 'addition',
-          changedFields: this.collectChangedFields(undefined, afterItem),
-          oldObject: undefined,
-          newObject: afterItem,
-        });
-      } else if (itemChangeType === 'deletion') {
-        changes.push({
-          changeType: 'deletion',
-          changedFields: this.collectChangedFields(beforeItem, undefined),
-          oldObject: beforeItem,
-          newObject: undefined,
-        });
-      } else if (itemChangeType === 'update') {
-        // Compare fields inside each item
-        const changedFields = this.collectChangedFields(beforeItem, afterItem);
-        // If everything within is unchanged, treat item as unchanged
-        const allUnchanged = Object.values(changedFields).every(
-          (val: any) => val.changeType === 'unchanged',
-        );
-        changes.push({
-          changeType: allUnchanged ? 'unchanged' : 'update',
-          changedFields,
-          oldObject: beforeItem,
-          newObject: afterItem,
-        });
-      } else {
-        // 'unchanged'
-        changes.push({
-          changeType: 'unchanged',
-          changedFields: this.collectChangedFields(beforeItem, afterItem),
-          oldObject: beforeItem,
-          newObject: afterItem,
-        });
-      }
+      // Recursively analyze the item
+      const itemChange = this.analyzeValueChange(
+        beforeArr[i],
+        afterArr[i],
+      ) as ArrayElementChange<T>;
+      changes.push(itemChange);
     }
 
     return changes;
   }
 
   /**
-   * -----------------------------------------------------------------
-   *  4) Helper to figure out "addition", "deletion", "update", etc.
-   * -----------------------------------------------------------------
+   * Basic "determine change type" logic.
    */
   private static determineChangeType(
     before: any,
@@ -298,41 +241,34 @@ export class FirestoreEventAnalyzer {
   }
 
   /**
-   * Utility: Check if value is a plain object
+   * Check if value is a plain object
    */
   private static isObject(value: any): boolean {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
 
   /**
-   * Utility: Check if an array is an array of primitives
-   */
-  private static isArrayOfPrimitives(arr: any[]): boolean {
-    return arr.every((item) => !this.isObject(item));
-  }
-
-  /**
-   * Utility: Deep equality check for primitives, arrays, or plain objects
+   * Deep equality check for primitives, arrays, or plain objects
    */
   private static deepEqual(a: any, b: any): boolean {
     if (a === b) return true;
     if (typeof a !== typeof b) return false;
 
-    // Compare arrays
+    // Arrays
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) return false;
-      return a.every((val, i) => this.deepEqual(val, b[i]));
+      return a.every((val, idx) => this.deepEqual(val, b[idx]));
     }
 
-    // Compare objects
+    // Objects
     if (this.isObject(a) && this.isObject(b)) {
       const aKeys = Object.keys(a);
       const bKeys = Object.keys(b);
       if (aKeys.length !== bKeys.length) return false;
-      return aKeys.every((key) => this.deepEqual(a[key], b[key]));
+      return aKeys.every((k) => this.deepEqual(a[k], b[k]));
     }
 
-    // Fallback: compare primitive values
+    // Otherwise (primitive, mismatch, etc.)
     return false;
   }
 }

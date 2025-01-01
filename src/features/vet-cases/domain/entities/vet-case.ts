@@ -10,9 +10,6 @@ export type VetCaseData = {
   inputs: CaseInputSource[];
 
   name: string;
-
-  createdAt: Date;
-  updatedAt: Date;
 };
 
 export class VetCase {
@@ -101,25 +98,22 @@ export class VetCase {
     return Boolean(this.findContent(contentId));
   }
 
-  findInput(inputId: string): CaseInputSource | undefined {
+  findInput(inputId: string): CaseInputSource {
     const result = this.findInputIndex(inputId);
-    return result ? { ...this.vetCase.inputs[result] } : undefined;
+    return { ...this.vetCase.inputs[result] };
   }
 
   updateInputSource(inputSource: CaseInputSource): void {
     const index = this.findInputIndex(inputSource.id);
-    if (index === undefined) {
-      return;
-    }
     this.vetCase.inputs[index] = inputSource;
   }
 
-  private findInputIndex(inputId: string): number | undefined {
+  private findInputIndex(inputId: string): number {
     const index = this.vetCase.inputs.findIndex(
       (input) => input.id === inputId,
     );
     if (index === -1) {
-      return undefined;
+      throw new Error('Input not found');
     }
     return index;
   }
