@@ -8,8 +8,7 @@ const existsEnvFile = fs.existsSync('.env');
 
 if (!existsEnvFile) {
   const envArray = Object.keys(process.env).reduce((acc, key) => {
-    const canAdd =
-      key.includes('APP') || key.includes('LOGGING_SERVICE_ACCOUNT');
+    const canAdd = key.includes('APP');
     if (canAdd) acc.push(`${key}="${process.env[key]}"`);
 
     return acc;
@@ -34,5 +33,4 @@ fs.writeFileSync(
 
 process.env = {
   ...process.env,
-  RUNTIME_IS: 'deploy',
 };
