@@ -13,12 +13,23 @@ export class SoapContentRequestGPTProcessor implements ContentRequestProcessor {
     request: SoapContentRequest,
     input: TranscribedInputSource,
   ): Promise<ProcessedSoapContentRequest> {
-    const prompt = `Generate SOAP veterinary notes for the following case: 
-      ${input.transcription} with enpahisis on the following:
-      ${request.instructions}
-      return the response as an JSON containing: objective, subjective, assesment, plan
-    `;
-    const response = await this.chatGPT.getResponse(prompt);
+    const instructions = `If additional instructions are provided, include them as emphasis:
+    "${request.instructions}"`;
+    const prompt = `Generate a SOAP template for a veterinary case based on the following audio transcription:
+
+"${input.transcription}"
+
+${request.instructions.length > 0 ? instructions : ''}
+
+Return your answer **strictly as a valid JSON object** that can be parsed by JSON.parse. The JSON must contain **exactly** these four properties as strings:
+
+- subjective
+- objective
+- assessment
+- plan
+
+Do not include any additional text, explanations, or formatting. No markdown, no code fences, no extra keys.`;
+    const response = await this.chatGPT.executePrompt(prompt);
     return {
       ...request,
       status: 'waiting_review',

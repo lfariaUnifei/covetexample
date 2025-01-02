@@ -1,36 +1,25 @@
-import axios, { AxiosInstance } from 'axios';
+import { OpenAI } from 'openai';
 
 type ChatGPTApiParams = {
-  apiUrl: string;
   apiKey: string;
-  model: 'chatgpt-4o-latest' | 'o1-2024-12-17';
+  model: 'gpt-4o' | 'gpt-3.5-turbo' | 'gpt-4o-mini';
 };
 
 export class ChatGptApi {
-  private readonly client: AxiosInstance;
-  constructor(params: ChatGPTApiParams) {
-    this.client = axios.create({
-      baseURL: params.apiUrl,
-      data: {
-        model: params.model,
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${params.apiKey}`,
-      },
+  private readonly client: OpenAI;
+  constructor(private readonly params: ChatGPTApiParams) {
+    this.client = new OpenAI({
+      apiKey: params.apiKey,
     });
   }
 
-  public async getResponse(prompt: string): Promise<string> {
+  public async executePrompt(prompt: string): Promise<string> {
     try {
-      const response = await this.client.post('completions', {
-        prompt,
-        max_tokens: 150,
-        n: 1,
-        stop: null,
-        temperature: 0.7,
+      const completion = await this.client.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: this.params.model,
       });
-      return response.data.choices[0].text;
+      return completion.choices[0].message.content ?? '{}';
     } catch (error) {
       console.error('Error fetching response from ChatGPT:', error);
       throw error;

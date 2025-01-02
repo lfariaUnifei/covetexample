@@ -4,7 +4,7 @@
   "description": "Aplicação para integrar a totvs com sistemas externos",
   "main": "build/index.js",
   "scripts": {
-    "build": "npx rimraf build && tsc -p tsconfig-build.json",
+    "build": "npx rimraf build && tsc -p tsconfig-build.json && cp .env build/.env",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
@@ -19,7 +19,7 @@
   "dependencies": {
     "axios": "^1.7.9",
     "cors": "^2.8.5",
-    "dotenv": "^14.2.0",
+    "dotenv": "^14.3.2",
     "express": "~4.17.2",
     "firebase-admin": "~13.0.2",
     "firebase-functions": "~6.2.0",
@@ -27,6 +27,7 @@
     "module-alias": "^2.2.2",
     "mongodb": "~4.13.0",
     "mongoose": "6.3.2",
+    "openai": "^4.77.0",
     "uuid": "^8.3.2",
     "zod": "^3.23.8"
   },
