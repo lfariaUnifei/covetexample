@@ -1,4 +1,5 @@
 import { getStorage } from 'firebase-admin/storage';
+import { readFileSync } from 'fs';
 import {
   ContentLocation,
   ContentLocationService,
@@ -11,8 +12,11 @@ export class GCloudContentLocationService implements ContentLocationService {
     if (content.status === 'transient') {
       return content.value;
     }
+    if (content.storage.name === 'File') {
+      return readFileSync(content.storage.path);
+    }
     const storage = getStorage();
-    const file = storage.bucket().file(content.path);
+    const file = storage.bucket().file(content.storage.path);
     const [exists] = await file.exists();
     if (!exists) {
       throw new Error('File does not exist');
@@ -31,8 +35,11 @@ export class GCloudContentLocationService implements ContentLocationService {
     return {
       ...content,
       status: 'stored',
-      cloudProvider: 'gcloud',
-      path: content.contentId,
+      storage: {
+        name: 'Cloud',
+        cloudProvider: 'gcloud',
+        path: content.contentId,
+      },
     };
   }
 }
