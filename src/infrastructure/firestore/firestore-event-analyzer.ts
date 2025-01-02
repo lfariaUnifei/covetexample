@@ -36,7 +36,7 @@ export type ArrayChanges<T> = {
  *   - If a property is an object -> ObjectChanges
  *   - Otherwise -> ChangedField
  */
-type FirestoreFieldChanges<T> = T extends any[]
+type FirestoreFieldChanges<T> = T extends any[] | Readonly<any[]>
   ? ArrayChanges<T[number]>
   : T extends Record<string, unknown>
   ? ObjectChanges<T>

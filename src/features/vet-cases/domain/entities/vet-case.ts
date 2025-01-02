@@ -7,24 +7,29 @@ import {
   ProcessedContentRequest,
 } from './content-request';
 
-export type VetCaseData = {
+type InternalVetCase = {
   ownerId: string;
   caseId: string;
   contents: Content[];
   inputs: CaseInputSource[];
-
   name: string;
 };
 
+export type VetCaseData = Readonly<
+  Omit<InternalVetCase, 'contents' | 'inputs'>
+> & {
+  contents: readonly Content[];
+  inputs: readonly CaseInputSource[];
+};
+
 export class VetCase {
-  constructor(private readonly vetCase: VetCaseData) {}
+  private readonly vetCase: InternalVetCase;
+  constructor(vetCase: VetCaseData) {
+    this.vetCase = vetCase as InternalVetCase;
+  }
 
   toData(): VetCaseData {
-    return {
-      ...this.vetCase,
-      contents: [...this.vetCase.contents],
-      inputs: [...this.vetCase.inputs],
-    };
+    return this.vetCase;
   }
 
   addContentIfNotExists(content: Omit<Content, 'requests'>): void {
@@ -88,17 +93,16 @@ export class VetCase {
     if (!content) {
       return undefined;
     }
-    const request = content.requests.find(
+    return content.requests.find(
       (search) => search.requestId === params.requestId,
     );
-    return request ? { ...request } : undefined;
   }
 
   contentExists(contentId: string): boolean {
     return Boolean(this.findContent(contentId));
   }
 
-  findInput(inputId: string): CaseInputSource {
+  findInput(inputId: string): Readonly<CaseInputSource> {
     const result = this.findInputIndex(inputId);
     return { ...this.vetCase.inputs[result] };
   }
