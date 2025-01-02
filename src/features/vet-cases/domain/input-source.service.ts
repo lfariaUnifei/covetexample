@@ -1,4 +1,3 @@
-import { ContentLocationService } from '../../../domain';
 import {
   TranscribedInputSource,
   TranscribingInputSource,
@@ -7,6 +6,5 @@ import {
 export interface InputSourceTranscriber {
   transcribe(
     inputSource: TranscribingInputSource,
-    contentLocationService: ContentLocationService,
   ): Promise<TranscribedInputSource>;
 }

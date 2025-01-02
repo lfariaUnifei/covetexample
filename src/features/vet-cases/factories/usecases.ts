@@ -1,4 +1,3 @@
-import { ContentLocationServiceFactory } from '../../../infrastructure/factories';
 import { ProcessContentRequestUsecase } from '../use-cases/process-content-request.usecase';
 import { ProcessInputSourceUsecase } from '../use-cases/process-input-source.usecase';
 import { VetCaseRepositoryFactory } from './repositories';
@@ -12,7 +11,6 @@ export class ProcessInputSourceUsecaseFactory {
     return new ProcessInputSourceUsecase(
       VetCaseRepositoryFactory.default(),
       InputSourceTranscriberFactory.default(),
-      ContentLocationServiceFactory.default(),
     );
   }
 }

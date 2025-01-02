@@ -1,10 +1,10 @@
-import { ContentRequestProcessorFactory } from '../domain/content-request.service';
+import { ContentRequestProcessor } from '../domain/content-request.service';
 import { VetCaseRepository } from '../domain/vet-case.repository';
 
 export class ProcessContentRequestUsecase {
   constructor(
     private readonly caseRepository: VetCaseRepository,
-    private readonly processorFactory: ContentRequestProcessorFactory,
+    private readonly processor: ContentRequestProcessor,
   ) {}
 
   async execute({
@@ -23,8 +23,7 @@ export class ProcessContentRequestUsecase {
     if (content.result.status !== 'processing') {
       return;
     }
-    const processor = await this.processorFactory.create(content);
-    const processed = await processor.process();
+    const processed = await this.processor.process(content);
     if (processed.templateName !== content.templateName) {
       throw new Error('Generated an invalid processed content');
     }

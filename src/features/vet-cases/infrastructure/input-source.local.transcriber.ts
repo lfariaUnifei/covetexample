@@ -6,9 +6,11 @@ import {
 import { InputSourceTranscriber } from '../domain/input-source.service';
 
 export class InputSourceLocalTranscriber implements InputSourceTranscriber {
+  constructor(
+    private readonly contentLocationService: ContentLocationService,
+  ) {}
   async transcribe(
     inputSource: TranscribingInputSource,
-    contentLocationService: ContentLocationService,
   ): Promise<TranscribedInputSource> {
     return {
       ...inputSource,

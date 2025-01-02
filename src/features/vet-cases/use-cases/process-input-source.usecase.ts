@@ -1,4 +1,3 @@
-import { ContentLocationService } from '../../../domain';
 import { InputSourceTranscriber } from '../domain/input-source.service';
 import { VetCaseRepository } from '../domain/vet-case.repository';
 
@@ -6,7 +5,6 @@ export class ProcessInputSourceUsecase {
   constructor(
     private readonly caseRepository: VetCaseRepository,
     private readonly transcriber: InputSourceTranscriber,
-    private readonly contentLocationService: ContentLocationService,
   ) {}
 
   async execute({
@@ -21,10 +19,7 @@ export class ProcessInputSourceUsecase {
     if (!input || input.status !== 'transcribing') {
       return;
     }
-    const transcribed = await this.transcriber.transcribe(
-      input,
-      this.contentLocationService,
-    );
+    const transcribed = await this.transcriber.transcribe(input);
     vetCase.updateInputSource(transcribed);
     await this.caseRepository.save(vetCase);
   }
