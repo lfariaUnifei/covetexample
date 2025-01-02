@@ -3,6 +3,7 @@ export type ContentTemplateName = 'SOAP' | 'Email';
 
 type BaseContentRequest<T extends ContentTemplateName = ContentTemplateName> = {
   requestId: string;
+  inputId: string;
   templateName: T;
   instructions: string;
 };

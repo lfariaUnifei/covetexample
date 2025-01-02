@@ -23,7 +23,11 @@ export class ProcessContentRequestUsecase {
     if (content.status !== 'processing') {
       return;
     }
-    const processed = await this.processor.process(content);
+    const input = vetCase.findInput(content.inputId);
+    if (input.status !== 'transcribed') {
+      return;
+    }
+    const processed = await this.processor.process(content, input);
     if (processed.templateName !== content.templateName) {
       throw new Error('Generated an invalid processed content');
     }

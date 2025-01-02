@@ -1,4 +1,3 @@
-import { v4 } from 'uuid';
 import { CaseInputSource } from './case-input';
 import { Content } from './content';
 import {
@@ -49,23 +48,6 @@ export class VetCase {
       return;
     }
     content.requests.push(request);
-  }
-
-  addDefaultContentRequest(params: AddDefaultContentRequestParams): void {
-    const content = this.findContent(params.contentId);
-    if (!content) {
-      throw new Error('Content not found');
-    }
-    if (content.requests.length > 0) {
-      return;
-    }
-    const contentRequest: ContentRequest = {
-      status: 'processing',
-      requestId: v4(),
-      templateName: params.templateName,
-      instructions: params.instructions,
-    };
-    content.requests.push(contentRequest);
   }
 
   updateProcessedContentRequest(
