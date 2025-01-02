@@ -1,23 +1,27 @@
 export type RequestStatus = 'processing' | 'waiting_review';
 export type ContentTemplateName = 'SOAP' | 'Email';
-export type BaseContentRequest<
-  T extends ContentTemplateName = ContentTemplateName,
-  R = any,
-> = {
+
+type BaseContentRequest<T extends ContentTemplateName = ContentTemplateName> = {
   requestId: string;
   templateName: T;
   instructions: string;
-  result:
-    | {
-        status: 'processing';
-      }
-    | {
-        status: 'waiting_review';
-        data: R;
-      };
 };
 
-export type SoapContentRequest = BaseContentRequest<
+export type ProcessingContentRequest<
+  T extends ContentTemplateName = ContentTemplateName,
+> = BaseContentRequest<T> & {
+  status: 'processing';
+};
+
+export type ProcessedContentRequest<
+  T extends ContentTemplateName = ContentTemplateName,
+  R = any,
+> = BaseContentRequest<T> & {
+  result: R;
+  status: 'waiting_review';
+};
+
+export type ProcessedSoapContentRequest = ProcessedContentRequest<
   'SOAP',
   {
     objective: string;
@@ -27,11 +31,16 @@ export type SoapContentRequest = BaseContentRequest<
   }
 >;
 
-export type EmailContentRequest = BaseContentRequest<
+export type SoapContentRequest =
+  | ProcessingContentRequest<'SOAP'>
+  | ProcessedSoapContentRequest;
+
+export type ProcessedEmailContentRequest = ProcessedContentRequest<
   'Email',
-  {
-    body: string;
-  }
+  { body: string }
 >;
+export type EmailContentRequest =
+  | ProcessingContentRequest<'Email'>
+  | ProcessedEmailContentRequest;
 
 export type ContentRequest = SoapContentRequest | EmailContentRequest;

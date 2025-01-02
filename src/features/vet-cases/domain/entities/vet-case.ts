@@ -1,7 +1,11 @@
 import { v4 } from 'uuid';
 import { CaseInputSource } from './case-input';
 import { Content } from './content';
-import { ContentRequest, ContentTemplateName } from './content-request';
+import {
+  ContentRequest,
+  ContentTemplateName,
+  ProcessedContentRequest,
+} from './content-request';
 
 export type VetCaseData = {
   ownerId: string;
@@ -50,23 +54,19 @@ export class VetCase {
     if (content.requests.length > 0) {
       return;
     }
-    content.requests.push({
+    const contentRequest: ContentRequest = {
+      status: 'processing',
       requestId: v4(),
       templateName: params.templateName,
       instructions: params.instructions,
-      result: {
-        status: 'processing',
-      },
-    });
+    };
+    content.requests.push(contentRequest);
   }
 
   updateProcessedContentRequest(
     contentId: string,
-    updatedRequest: ContentRequest,
+    updatedRequest: ProcessedContentRequest,
   ): void {
-    if (updatedRequest.result.status === 'processing') {
-      throw new Error('Invalid request status');
-    }
     const content = this.findContent(contentId);
     if (!content) {
       throw new Error('Content not found');

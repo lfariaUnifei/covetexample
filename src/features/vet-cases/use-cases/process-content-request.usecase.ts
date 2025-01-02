@@ -20,7 +20,7 @@ export class ProcessContentRequestUsecase {
     if (!content) {
       throw new Error('Content not found');
     }
-    if (content.result.status !== 'processing') {
+    if (content.status !== 'processing') {
       return;
     }
     const processed = await this.processor.process(content);

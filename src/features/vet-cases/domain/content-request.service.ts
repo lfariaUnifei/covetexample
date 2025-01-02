@@ -1,5 +1,8 @@
-import { ContentRequest } from './entities/content-request';
+import {
+  ContentRequest,
+  ProcessedContentRequest,
+} from './entities/content-request';
 
 export interface ContentRequestProcessor {
-  process(request: ContentRequest): Promise<ContentRequest>;
+  process(request: ContentRequest): Promise<ProcessedContentRequest>;
 }
